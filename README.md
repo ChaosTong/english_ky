@@ -10,7 +10,7 @@
 <script src="2011.js"></script>
 ```
 
-![preview1](截屏2025-05-03 18.09.49.png)
-![preview2](截屏2025-05-03 18.10.04.png)
-![preview3](截屏2025-05-03 18.10.13.png)
-![preview4](截屏2025-05-03 18.10.39.png)
+![preview1](./1.png)
+![preview2](./2.png)
+![preview3](./3.png)
+![preview4](./4.png)
