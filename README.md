@@ -14,3 +14,5 @@
 ![preview2](./2.png)
 ![preview3](./3.png)
 ![preview4](./4.png)
+
+![Visited By](https://count.easyulife.com/get/@english_ky?theme=gelbooru)
