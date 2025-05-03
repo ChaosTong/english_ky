@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>交互式阅读与答题 - 柬埔寨婚姻习俗</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
+    <style>
+        /* 自定义样式 */
+        html, body {
+            height: 100%;
+            margin: 0;
+            overflow-x: hidden;
+            background-color: #f3f4f6; /* Light gray background */
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            line-height: 1.8;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* --- Layout --- */
+        .page-container {
+            display: flex;
+            flex-direction: column;
+            flex-grow: 1;
+            overflow: hidden;
+            /* Removed max-width: 1280px; */
+            width: 100%;
+            margin: 0 auto; /* Center container */
+        }
+
+        /* Header/Controls */
+        .controls {
+            padding: 1rem 1.5rem;
+            background-color: white;
+            border-bottom: 1px solid #e5e7eb;
+            flex-shrink: 0; /* Prevent shrinking */
+            box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
+            z-index: 10; /* Keep controls above content */
+            margin: 1rem 1rem 0 1rem; /* Add margin */
+            border-radius: 8px; /* Rounded corners */
+        }
+
+        /* Main Content Area (Passage + Options) */
+        .main-content {
+            display: flex;
+            flex-direction: column; /* Default: Passage above Options */
+            flex-grow: 1;
+            overflow: hidden; /* Important for scrolling */
+            margin: 0 1rem 1rem 1rem; /* Bottom margin */
+        }
+
+        /* Passage Container */
+        #passage-container {
+            padding: 1rem 1.5rem;
+            background-color: white;
+            overflow-y: auto;
+            flex-shrink: 0; /* Allow shrinking but have scroll */
+             border-radius: 8px; /* Rounded corners */
+             box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
+             margin-bottom: 1rem; /* Space when stacked */
+        }
+
+        /* Options Panel Container */
+        #options-panel-container {
+            background-color: #f9fafb;
+            border-top: 1px solid #e5e7eb;
+            overflow-y: auto;
+            padding: 1rem 1.5rem;
+            flex-shrink: 0;
+             border-radius: 8px; /* Rounded corners */
+             box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
+        }
+
+        /* Responsive Layout (Wider Screens) */
+        @media (min-width: 1024px) {
+             body {
+                 height: 100vh;
+                 overflow: hidden; /* Prevent body scroll */
+             }
+            .page-container {
+                 height: 100vh; /* Full height */
+                 padding: 1rem; /* Padding around the whole container */
+                 box-sizing: border-box;
+            }
+             .controls {
+                 margin: 0 0 1rem 0; /* Remove side margin, add bottom */
+             }
+            .main-content {
+                flex-direction: row; /* Side-by-side */
+                margin: 0; /* Remove margin */
+                height: calc(100% - 5rem); /* Adjust based on controls height + padding */
+            }
+            #passage-container {
+                flex: 5; /* Passage takes 5 parts */
+                margin-right: 1rem; /* Space between panels */
+                margin-bottom: 0; /* Remove bottom margin */
+                height: 100%; /* Fill available height */
+            }
+            #options-panel-container {
+                flex: 4; /* Options take 4 parts (wider) */
+                border-top: none;
+                border-left: 1px solid #e5e7eb;
+                height: 100%; /* Fill available height */
+            }
+        }
+
+        /* --- Control Buttons --- */
+        .control-button {
+            padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 0.9rem;
+            transition: background-color 0.2s, color 0.2s; margin: 0 4px;
+        }
+        .control-button.active { background-color: #3b82f6; color: white; }
+        .control-button:not(.active) { background-color: #e5e7eb; color: #374151; }
+        .control-button:not(.active):hover { background-color: #d1d5db; }
+
+        /* --- Passage Content --- */
+        #passage-content { line-height: 2; } /* Increase line height in passage */
+        .blank-placeholder {
+            color: #3b82f6; /* Default blue color for UNANSWERED blanks */
+            font-weight: 600;
+            cursor: pointer;
+            padding: 2px 4px;
+            border-radius: 4px;
+            margin: 0 2px;
+            transition: background-color 0.2s, color 0.2s, text-decoration 0.2s, border-bottom 0.2s; /* Added border-bottom transition */
+            border-bottom: 1px dotted #3b82f6;
+            display: inline-block; /* Needed for padding and background */
+            min-width: 50px; /* Give some base width */
+            text-align: center;
+            vertical-align: baseline; /* Align with surrounding text */
+        }
+        .blank-placeholder.active { /* Style for when placeholder is clicked */
+            background-color: #dbeafe; /* Light blue background for active blank */
+            border-bottom-color: transparent; /* Hide border when active */
+        }
+        /* Style for when an answer is selected (generic) */
+        .blank-placeholder.answered {
+             border-bottom-color: transparent; /* Remove dotted line */
+             font-style: normal;
+             font-weight: normal; /* Normal weight for answered text */
+             background-color: transparent; /* Ensure no background unless active/correct/incorrect */
+             color: #1f2937; /* Default text color for answered text (can be overridden) */
+        }
+        /* Specific color for answered text in Quiz Mode BEFORE checking */
+        .quiz-mode .blank-placeholder.answered {
+            color: #3b82f6; /* Blue color for answered text in quiz mode */
+        }
+
+         /* Feedback on placeholder (Applied in both modes now, overrides .answered styles) */
+         .blank-placeholder.correct {
+             color: #059669 !important; /* Green */
+             background-color: #d1fae5 !important;
+             font-weight: bold !important;
+             border-bottom-color: transparent !important;
+         }
+         .blank-placeholder.incorrect {
+             color: #dc2626 !important; /* Red */
+             background-color: #fee2e2 !important;
+             /* text-decoration: line-through; */ /* Maybe remove line-through on placeholder */
+             font-weight: bold !important;
+             border-bottom-color: transparent !important;
+         }
+         /* Ensure active highlight doesn't override feedback colors */
+        .blank-placeholder.correct.active,
+        .blank-placeholder.incorrect.active {
+             /* Keep correct/incorrect background */
+             border-bottom-color: transparent !important;
+        }
+
+
+        /* --- Study Mode Styles --- */
+        /* Vocab word style applies globally now */
+        .vocab-word {
+            cursor: pointer;
+            text-decoration: underline;
+            text-decoration-style: dotted;
+            color: #2563eb;
+            position: relative;
+            font-weight: 500;
+        }
+        .tooltip {
+            visibility: hidden; width: max-content; max-width: 200px; background-color: #333;
+            color: #fff; text-align: center; border-radius: 6px; padding: 5px 10px;
+            position: absolute; z-index: 20; /* Increased z-index */ bottom: 125%; left: 50%;
+            transform: translateX(-50%); opacity: 0; transition: opacity 0.3s;
+            font-size: 0.875rem; line-height: 1.4; pointer-events: none;
+        }
+        /* Show tooltip on hover or when active class is added */
+        .vocab-word:hover .tooltip,
+        .vocab-word.active .tooltip {
+             visibility: visible; opacity: 1;
+        }
+        /* Hide vocab functionality in quiz mode */
+        .quiz-mode .vocab-word {
+            cursor: default; text-decoration: none; color: inherit; font-weight: inherit; /* Inherit from parent */
+        }
+        .quiz-mode .vocab-word .tooltip { display: none; }
+
+        .study-mode .toggle-translation-btn { display: inline-block; background: none; border: none; color: #9ca3af; cursor: pointer; font-size: 0.8em; margin-left: 5px; vertical-align: middle; padding: 2px 4px; border-radius: 3px; transition: background-color 0.2s; }
+        .study-mode .toggle-translation-btn:hover { background-color: #e5e7eb; }
+        .sentence-translation { color: #6b7280; font-size: 0.95em; margin-left: 0; background-color: #f3f4f6; padding: 5px 8px; border-radius: 4px; margin-top: 4px; display: none; }
+        .study-mode .check-answers-btn, .study-mode #score-display { display: none; }
+        /* Ensure quiz options are visible in study mode */
+        .study-mode .quiz-options { display: grid; } /* Use grid for options row */
+        /* Ensure radios are enabled in study mode */
+        .study-mode .quiz-option input[type="radio"]:disabled + label { cursor: pointer; } /* Keep cursor pointer */
+        .study-mode .quiz-option input[type="radio"]:disabled { /* Override quiz mode disable */ }
+
+
+        /* --- Quiz Mode Styles --- */
+        .quiz-mode .toggle-translation-btn, .quiz-mode .sentence-translation { display: none; }
+        .quiz-mode .check-answers-btn { display: inline-block; }
+        .quiz-mode #score-display { display: block; font-weight: 600; }
+        .quiz-mode .quiz-options { display: grid; } /* Use grid for options row */
+
+
+        /* --- Options Panel Content --- */
+        #options-panel-container h2 { font-size: 1.25rem; font-weight: 600; margin-bottom: 1rem; color: #1f2937; }
+        #options-panel-content { /* Container for dynamic options */ }
+        .options-prompt { color: #6b7280; font-style: italic; text-align: center; padding: 2rem 0; }
+        .option-group {
+            display: flex; /* Use flex for number + options row */
+            align-items: center; /* Align number vertically */
+            margin-bottom: 0.75rem;
+            padding-bottom: 0.75rem;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        .option-group:last-child { border-bottom: none; }
+        .option-group .question-number {
+            font-weight: 600;
+            color: #4b5563;
+            margin-right: 1rem; /* Space between number and options */
+            flex-shrink: 0; /* Prevent number from shrinking */
+            width: 2em; /* Fixed width for alignment */
+            text-align: right;
+        }
+        .quiz-options { /* Container for the 4 option buttons */
+            display: grid;
+            grid-template-columns: repeat(4, 1fr); /* 4 equal columns */
+            gap: 0.5rem; /* Gap between buttons */
+            width: 100%; /* Take remaining width */
+        }
+
+        /* Quiz Option Button Styling (Used in both modes now) */
+        .quiz-option input[type="radio"] { opacity: 0; position: absolute; width: 0; height: 0; }
+        .quiz-option label {
+            display: flex; /* Use flexbox for prefix + text alignment */
+            align-items: baseline; /* Align baseline of prefix and text */
+            padding: 0.5rem 0.75rem; /* Adjusted padding */
+            border: 1px solid #d1d5db; border-radius: 6px;
+            background-color: #ffffff; color: #374151; cursor: pointer;
+            transition: background-color 0.2s, border-color 0.2s, box-shadow 0.2s;
+            font-size: 0.9em; /* Slightly smaller font */
+            text-align: left; /* Align text to the left */
+            box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+            position: relative; /* For pseudo-elements */
+            /* Removed overflow: hidden; */
+        }
+        .quiz-option .option-prefix {
+            flex-shrink: 0; /* Prevent prefix from shrinking */
+            width: 2.5em; /* Increased width for prefix alignment */
+            margin-right: 0.5em; /* Space between prefix and text */
+            font-weight: 600; /* Bold prefix */
+            color: #6b7280; /* Gray prefix color */
+            text-align: right;
+        }
+        .quiz-option .option-text {
+            flex-grow: 1; /* Allow text to take remaining space */
+            white-space: nowrap; /* Prevent text wrapping */
+            /* Removed overflow: hidden; */
+            text-overflow: ellipsis; /* Add ellipsis if text overflows */
+            /* Allow vocab words inside to be clickable */
+            pointer-events: auto;
+        }
+         /* Ensure vocab words within labels are clickable */
+        .quiz-option label .vocab-word {
+            pointer-events: auto; /* Allow clicks on vocab words */
+        }
+
+
+        .quiz-option label:hover { background-color: #f9fafb; border-color: #9ca3af; }
+        /* Selected state (before checking answers) */
+        .quiz-option input[type="radio"]:checked + label {
+            background-color: #dbeafe; border-color: #60a5fa; color: #1e40af; font-weight: 500;
+            box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
+        }
+        /* Adjust prefix color on select */
+        .quiz-option input[type="radio"]:checked + label .option-prefix {
+            color: #1e40af; /* Match selected text color */
+        }
+        .quiz-option input[type="radio"]:focus + label { box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.5); outline: none; }
+
+        /* Feedback Styles for Option Labels (Applied after selection/checking) */
+        /* Correct Selection */
+        .quiz-option label.correct {
+            background-color: #d1fae5 !important; border-color: #34d399 !important;
+            color: #065f46 !important; font-weight: bold;
+        }
+         /* Adjust prefix color on correct */
+        .quiz-option label.correct .option-prefix {
+             color: #065f46 !important;
+        }
+        .quiz-option label.correct::after { content: ' ✔'; color: #059669; font-weight: bold; margin-left: auto; /* Push checkmark to the right */ padding-left: 0.5em; }
+
+        /* Incorrect Selection */
+        .quiz-option label.incorrect {
+            background-color: #fee2e2 !important; border-color: #f87171 !important;
+            color: #991b1b !important;
+        }
+         /* Adjust prefix color on incorrect */
+         .quiz-option label.incorrect .option-prefix {
+             color: #991b1b !important;
+        }
+         .quiz-option label.incorrect::after { content: ' ✘'; color: #dc2626; font-weight: bold; margin-left: auto; /* Push cross to the right */ padding-left: 0.5em; }
+
+        /* Highlighting the actual correct answer when user was wrong */
+        .quiz-option label.missed-correct {
+             border-color: #34d399; /* Green border to highlight */
+        }
+
+        /* Disabled state specifically for Quiz Mode after checking */
+        .quiz-mode .quiz-option input[type="radio"]:disabled + label { cursor: default; }
+
+
+    </style>
+</head>
+<body>
+
+    <div class="page-container">
+        <div class="controls flex flex-wrap gap-2 items-center">
+            <div>
+                <button id="study-mode-btn" class="control-button active" onclick="switchToStudyMode()">学习模式</button>
+                <button id="quiz-mode-btn" class="control-button" onclick="switchToQuizMode()">答题模式</button>
+            </div>
+            <div class="study-mode-controls">
+                <button class="control-button" onclick="showAllTranslations(true)">全部显示翻译</button>
+                <button class="control-button" onclick="showAllTranslations(false)">全部隐藏翻译</button>
+            </div>
+            <button id="check-answers-btn" class="control-button check-answers-btn" onclick="checkAnswers()">检查答案</button>
+            <div id="score-display" class="ml-auto font-semibold"></div>
+        </div>
+
+        <div class="main-content">
+            <div id="passage-container">
+                <h1 class="text-2xl md:text-3xl font-bold mb-4 text-gray-800">柬埔寨婚姻习俗</h1>
+                <div id="passage-content" class="text-gray-700 space-y-4">
+                    </div>
+            </div>
+
+            <div id="options-panel-container">
+                 <h2>全部选项</h2> <div id="options-panel-content">
+                    </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Data Definition ---
+        // ADD {{VOCAB:...}} markers within option strings
+        const clozeData = [
+            { id: 1, options: ["[A] by way of", "[B] {{VOCAB:as well as:也;和}}", "[C] on behalf of", "[D] with regard to"], correctIndex: 1, selectedIndex: null },
+            { id: 2, options: ["[A] adapt to", "[B] provide for", "[C]compete with", "[D] {{VOCAB:decide on:选定;决定}}"], correctIndex: 3, selectedIndex: null },
+            { id: 3, options: ["[A] close", "[B] renew", "[C] {{VOCAB:arrange:安排}}", "[D] postpone"], correctIndex: 2, selectedIndex: null },
+            { id: 4, options: ["[A] {{VOCAB:In theory:理论上}}", "[B] Above all", "[C] In time", "[D] For example"], correctIndex: 0, selectedIndex: null },
+            { id: 5, options: ["[A] Although", "[B] Lest", "[C] {{VOCAB:After:在...之后}}", "[D] Unless"], correctIndex: 2, selectedIndex: null },
+            { id: 6, options: ["[A] {{VOCAB:into:进入...内部}}", "[B] within", "[C] from", "[D] through"], correctIndex: 0, selectedIndex: null },
+            { id: 7, options: ["[A] sine", "[B] or", "[C] {{VOCAB:but:但是}}", "[D] so"], correctIndex: 2, selectedIndex: null },
+            { id: 8, options: ["[A] test", "[B]copy", "[C] {{VOCAB:recite:念诵;背诵}}", "[D] create"], correctIndex: 2, selectedIndex: null },
+            { id: 9, options: ["[A] folding", "[B] piling", "[C] wrapping", "[D] {{VOCAB:tying:系;捆}}"], correctIndex: 3, selectedIndex: null },
+            { id: 10, options: ["[A] lighting", "[B] {{VOCAB:passing:传递}}", "[C] hiding", "[D] serving"], correctIndex: 1, selectedIndex: null },
+            { id: 11, options: ["[A] meeting", "[B] association", "[C] collection", "[D] {{VOCAB:union:结合;联合}}"], correctIndex: 3, selectedIndex: null },
+            { id: 12, options: ["[A] grow", "[B] part", "[C] deal", "[D] {{VOCAB:live:居住}}"], correctIndex: 3, selectedIndex: null },
+            { id: 13, options: ["[A] whereas", "[B] {{VOCAB:until:直到}}", "[C] for", "[D] if"], correctIndex: 1, selectedIndex: null },
+            { id: 14, options: ["[A] {{VOCAB:obtain:获得;办理}}", "[B] follow", "[C] challenge", "[ D]avoid"], correctIndex: 0, selectedIndex: null },
+            { id: 15, options: ["[A] isolated", "[B] persuaded", "[C] {{VOCAB:viewed:看待;视为}}", "[D] exposed"], correctIndex: 2, selectedIndex: null },
+            { id: 16, options: ["[A]wherever", "[B] however", "[C] whenever", "[D] {{VOCAB:whatever:任何;无论什么}}"], correctIndex: 3, selectedIndex: null },
+            { id: 17, options: ["[A] changed", "[B] {{VOCAB:brought:带来}}", "[C] shaped", "[D] pushed"], correctIndex: 1, selectedIndex: null },
+            { id: 18, options: ["[A] {{VOCAB:divided:分割}}", "[B] invested", "[C] donated", "[D] withdrawn"], correctIndex: 0, selectedIndex: null },
+            { id: 19, options: ["[A]clears", "[B] warms", "[C] {{VOCAB:shows:出现;显露}} up", "[D] breaks"], correctIndex: 2, selectedIndex: null }, // Note: "shows up" needs careful parsing if done dynamically
+            { id: 20, options: ["[A] {{VOCAB:while:而;然而}}", "[B] so what", "[C]once", "[D] in that"], correctIndex: 0, selectedIndex: null }
+        ];
+
+
+        const passageRaw = `
+<p>
+{{SENTENCE:In Cambodia, the choice of a {{VOCAB:spouse:配偶}} is a {{VOCAB:complex:复杂的}} one for the young male.}}|||{在柬埔寨，对于年轻男性来说，选择配偶是一件复杂的事情。}
+{{SENTENCE:It may {{VOCAB:involve:涉及；包含}} not only his parents and his friends, {{BLANK:1}} those of the young women, but also a {{VOCAB:matchmaker:媒人}}.}}|||{这可能不仅涉及他的父母和朋友，以及女方的父母朋友，还可能涉及媒人。}
+{{SENTENCE:A young man can {{BLANK:2}} a likely {{VOCAB:spouse:配偶}} on his own and then ask his parents to {{BLANK:3}} the marriage {{VOCAB:negotiations:谈判；协商}}, or the young man’s parents may make the choice of a spouse, giving the child little to say in the selection.}}|||{年轻人可以自己选定一个可能的配偶，然后请求父母安排婚姻协商；或者男方的父母可能直接做出选择，让子女在选择中几乎没有发言权。}
+{{SENTENCE:{{BLANK:4}}, a girl may {{VOCAB:veto:否决}} the spouse her parents have chosen.}}|||{理论上，女孩可以否决父母为她选择的配偶。}
+{{SENTENCE:{{BLANK:5}} a spouse has been selected, each family {{VOCAB:investigates:调查}} the other to make sure its child is marrying {{BLANK:6}} a good family.}}|||{选定配偶后，每个家庭都会调查对方，以确保自己的孩子嫁入/娶入一个好家庭。}
+</p>
+<p>
+{{SENTENCE:The traditional wedding is a long and colorful {{VOCAB:affair:事件；事情}}.}}|||{传统的婚礼是一个漫长而多彩的仪式。}
+{{SENTENCE:{{VOCAB:Formerly:以前；从前}} it lasted three days, {{BLANK:7}} by the 1980s it more commonly lasted a day and a half.}}|||{以前婚礼持续三天，但到了 1980 年代，通常持续一天半。}
+{{SENTENCE:Buddhist priests offer a short {{VOCAB:sermon:布道；讲道}} and {{BLANK:8}} prayers of blessing.}}|||{佛教僧侣会进行简短的布道并念诵祝福的祷文。}
+{{SENTENCE:Parts of the ceremony involve {{VOCAB:ritual:仪式的}} hair cutting, {{BLANK:9}} cotton threads {{VOCAB:soaked:浸泡的}} in holy water around the bride’s and groom’s wrists, and {{BLANK:10}} a candle around a circle of happily married and respected couples to bless the {{BLANK:11}}.}}|||{部分仪式包括象征性的剪发，将浸过圣水的棉线系在新娘和新郎的手腕上，以及将一支蜡烛在幸福美满、受人尊敬的夫妇圈中传递以祝福这对新人的结合。}
+{{SENTENCE:{{VOCAB:Newlyweds:新婚夫妇}} traditionally move in with the wife’s parents and may {{BLANK:12}} with them up to a year, {{BLANK:13}} they can build a new house nearby.}}|||{传统上，新婚夫妇会搬去与女方父母同住，可能长达一年，直到他们能在附近建造新房。}
+</p>
+<p>
+{{SENTENCE:Divorce is legal and easy to {{BLANK:14}}, but not common.}}|||{离婚是合法的且容易办理，但并不常见。}
+{{SENTENCE:Divorced persons are {{BLANK:15}} with some {{VOCAB:disapproval:不赞成；反对}}.}}|||{离婚人士会受到一些不赞成的眼光。}
+{{SENTENCE:Each spouse {{VOCAB:retains:保留；保持}} {{BLANK:16}} property he or she {{BLANK:17}} into the marriage, and {{VOCAB:jointly:共同地；联合地}} {{VOCAB:acquired:获得的}} property is {{BLANK:18}} equally.}}|||{夫妻双方各自保留其带入婚姻的任何财产，而共同获得的财产则平均分配。}
+{{SENTENCE:Divorced persons may remarry, but a gender {{VOCAB:prejudice:偏见}} {{BLANK:19}} up.}}|||{离婚人士可以再婚，但存在性别偏见。}
+{{SENTENCE:The divorced male doesn’t have a {{VOCAB:waiting period:等待期}} before he can remarry {{BLANK:20}} the woman must wait ten months.}}|||{离婚的男性再婚没有等待期，而女性则必须等待十个月。}
+</p>
+        `;
+
+        // --- DOM Elements ---
+        const passageContainer = document.getElementById('passage-content');
+        const optionsPanelContent = document.getElementById('options-panel-content');
+        const bodyElement = document.body;
+        const studyModeBtn = document.getElementById('study-mode-btn');
+        const quizModeBtn = document.getElementById('quiz-mode-btn');
+        const studyModeControls = document.querySelector('.study-mode-controls');
+        const checkAnswersBtn = document.getElementById('check-answers-btn');
+        const scoreDisplay = document.getElementById('score-display');
+
+        // --- State ---
+        let isCheckingAnswers = false;
+        let currentActiveBlankId = null; // Still useful for highlighting
+
+        // --- Functions ---
+
+        // Parses text containing {{VOCAB:word:translation}} markers
+        function parseTextWithVocab(text) {
+            return text.replace(/{{VOCAB:(.*?):(.*?)}}/g, (match, word, translation) => {
+                // Ensure nested spans for tooltip structure
+                return `<span class="vocab-word" data-translation="${translation}">${word}<span class="tooltip">${translation}</span></span>`;
+            });
+        }
+
+
+        function buildPassageHTML() {
+            let html = passageRaw;
+            html = html.replace(/{{SENTENCE:(.*?)}}\|\|\|{(.*?)}/gs, (match, sentence, translation) => {
+                // Parse vocab in the sentence part first
+                let sentenceWithVocab = parseTextWithVocab(sentence);
+
+                const finalSentence = sentenceWithVocab.replace(/{{BLANK:(\d+)}}/g, (blankMatch, id) => {
+                    const blankData = clozeData.find(b => b.id === parseInt(id));
+                    const initialText = `___(${id})___`; // Always start with placeholder number
+                    // Keep onclick to activate/highlight and potentially scroll
+                    return `<span class="blank-placeholder" data-blank-id="${id}" onclick="activateBlank(${id})">${initialText}</span>`;
+                });
+                return `<span class="sentence">${finalSentence}</span>` +
+                       `<button class="toggle-translation-btn" onclick="toggleSingleTranslation(this)">译</button>` +
+                       `<span class="sentence-translation">${translation}</span>`;
+            });
+            passageContainer.innerHTML = html;
+            // Setup tooltips for the entire document now
+            setupVocabTooltips();
+            updateAllPlaceholdersFromState(); // Restore answers on initial build if needed
+        }
+
+        // NEW: Builds the entire options panel with all questions
+        function buildAllOptionsPanel() {
+            let allOptionsHTML = '';
+            clozeData.forEach(blankData => {
+                allOptionsHTML += `<div class="option-group" id="option-group-${blankData.id}">`;
+                allOptionsHTML += `<span class="question-number">${blankData.id}.</span>`;
+
+                // Radio buttons (styled as buttons) - Always present now
+                allOptionsHTML += `<div class="quiz-options">`; // Use grid layout defined in CSS
+                blankData.options.forEach((option, index) => {
+                    const inputId = `q${blankData.id}_opt${index}`;
+                    const isSelected = blankData.selectedIndex === index;
+
+                    // Extract prefix and the rest of the option text
+                    const match = option.match(/^(\[[A-Z]\])\s*(.*)$/);
+                    let prefix = `[${String.fromCharCode(65 + index)}]`; // Default A, B, C, D
+                    let textContent = option; // Full option text initially
+                    if (match) {
+                        prefix = match[1];
+                        textContent = match[2]; // Text part after prefix
+                    }
+
+                    // Parse the textContent for {{VOCAB:...}} markers
+                    const parsedTextContent = parseTextWithVocab(textContent);
+
+                    allOptionsHTML += `<div class="quiz-option">`;
+                    allOptionsHTML += `<input type="radio" id="${inputId}" name="question_${blankData.id}" value="${index}" ${isSelected ? 'checked' : ''} onchange="handleOptionSelect(${blankData.id}, ${index})">`;
+                    // Use spans for prefix and text for alignment
+                    allOptionsHTML += `<label for="${inputId}">`;
+                    allOptionsHTML += `<span class="option-prefix">${prefix}</span>`;
+                    // Use innerHTML here because parsedTextContent contains HTML spans
+                    allOptionsHTML += `<span class="option-text">${parsedTextContent}</span>`;
+                    allOptionsHTML += `</label>`;
+                    allOptionsHTML += `</div>`;
+                });
+                allOptionsHTML += `</div>`; // End quiz-options
+                allOptionsHTML += `</div>`; // End option-group
+            });
+            optionsPanelContent.innerHTML = allOptionsHTML;
+
+            // Re-setup tooltips after building options panel
+            setupVocabTooltips();
+
+            // Apply initial feedback if needed (e.g., after switching modes)
+            if (bodyElement.classList.contains('study-mode')) {
+                 clozeData.forEach(blank => {
+                     if(blank.selectedIndex !== null) applyStudyModeFeedback(blank.id, blank.selectedIndex);
+                 });
+            } else if (isCheckingAnswers) {
+                 clozeData.forEach(blank => applyQuizModeFeedback(blank.id));
+            }
+        }
+
+
+        function activateBlank(blankId) {
+            // Deactivate previously active blank
+            if (currentActiveBlankId !== null) {
+                const previousPlaceholder = passageContainer.querySelector(`.blank-placeholder[data-blank-id="${currentActiveBlankId}"]`);
+                previousPlaceholder?.classList.remove('active');
+            }
+
+            // Activate new blank in passage
+            currentActiveBlankId = blankId;
+            const currentPlaceholder = passageContainer.querySelector(`.blank-placeholder[data-blank-id="${currentActiveBlankId}"]`);
+            currentPlaceholder?.classList.add('active');
+
+            // Scroll the options panel to the corresponding question group
+            const optionGroup = document.getElementById(`option-group-${blankId}`);
+            if (optionGroup) {
+                optionGroup.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                 // Optional: Add a temporary highlight to the option group
+                 optionGroup.style.backgroundColor = '#eff6ff';
+                 setTimeout(() => { optionGroup.style.backgroundColor = ''; }, 1500);
+            }
+        }
+
+
+        function handleOptionSelect(blankId, selectedIndex) {
+            const blankData = clozeData.find(b => b.id === blankId);
+            if (blankData) {
+                blankData.selectedIndex = selectedIndex;
+            }
+
+            // Update placeholder text immediately (in both modes now)
+            updatePlaceholderText(blankId);
+
+            if (bodyElement.classList.contains('study-mode')) {
+                // Apply immediate feedback in Study Mode
+                applyStudyModeFeedback(blankId, selectedIndex);
+            } else if (isCheckingAnswers) {
+                // If answers are already checked in Quiz Mode, re-apply feedback for this question
+                applyQuizModeFeedback(blankId);
+                // Recalculate score display
+                const correctCount = clozeData.filter(b => b.selectedIndex === b.correctIndex).length;
+                scoreDisplay.textContent = `得分: ${correctCount} / ${clozeData.length}`;
+            }
+        }
+
+        // Updates the text content and feedback style of a specific placeholder
+        function updatePlaceholderText(blankId) {
+             const placeholder = passageContainer.querySelector(`.blank-placeholder[data-blank-id="${blankId}"]`);
+             const blankData = clozeData.find(b => b.id === blankId);
+             if (placeholder && blankData) {
+                 // 1. Clear previous state classes (keep .active if present)
+                 placeholder.classList.remove('correct', 'incorrect', 'answered');
+
+                 if (blankData.selectedIndex !== null) {
+                     // 2. Set text content (Strip prefix here)
+                     const selectedText = blankData.options[blankData.selectedIndex].replace(/^\[[A-Z]\]\s*/, '');
+                      // Also strip vocab markers for placeholder display
+                     const cleanSelectedText = selectedText.replace(/{{VOCAB:(.*?):.*?}}/g, '$1');
+                     placeholder.textContent = cleanSelectedText;
+                     // 3. Add .answered class (controls base style and quiz mode color)
+                     placeholder.classList.add('answered');
+
+                     // 4. Apply correctness classes ONLY if answers are being checked (Quiz) or always in Study mode
+                     if ((isCheckingAnswers && bodyElement.classList.contains('quiz-mode')) || bodyElement.classList.contains('study-mode')) {
+                          if (blankData.selectedIndex === blankData.correctIndex) {
+                             placeholder.classList.add('correct');
+                         } else {
+                             placeholder.classList.add('incorrect');
+                         }
+                     }
+
+                 } else {
+                     // Revert to default placeholder number
+                     placeholder.textContent = `___(${blankId})___`;
+                     // .answered, .correct, .incorrect are already removed
+                 }
+             }
+        }
+
+
+        // Updates all placeholders based on current clozeData state
+        function updateAllPlaceholdersFromState() {
+            clozeData.forEach(blank => {
+                updatePlaceholderText(blank.id);
+            });
+        }
+
+
+        // Setup tooltips for the entire document
+        function setupVocabTooltips() {
+            const vocabWords = document.querySelectorAll('.vocab-word'); // Query the whole document
+            vocabWords.forEach(word => {
+                // Ensure tooltip structure exists (important if dynamically added)
+                let tooltip = word.querySelector('.tooltip');
+                if (!tooltip) {
+                    tooltip = document.createElement('span');
+                    tooltip.classList.add('tooltip');
+                    tooltip.textContent = word.dataset.translation || 'No translation';
+                    word.appendChild(tooltip);
+                }
+
+                // Use named function for easier removal
+                word.removeEventListener('click', handleVocabClick);
+                word.addEventListener('click', handleVocabClick);
+            });
+
+             // Global listener to hide tooltips
+             document.removeEventListener('click', hideAllTooltips);
+             document.addEventListener('click', hideAllTooltips);
+        }
+
+        // Handles clicks on ANY vocab word
+        function handleVocabClick(event) {
+             // Only allow in study mode
+             if (!bodyElement.classList.contains('study-mode')) return;
+             // Prevent label click from triggering radio change if vocab is inside
+             event.preventDefault();
+             event.stopPropagation();
+
+             const currentWord = event.currentTarget;
+             // Deactivate others globally
+             document.querySelectorAll('.vocab-word.active').forEach(w => {
+                 if (w !== currentWord) w.classList.remove('active');
+             });
+             // Toggle current
+             currentWord.classList.toggle('active');
+        }
+
+        // Hides all tooltips when clicking elsewhere
+        function hideAllTooltips(event) {
+             // Don't hide if clicking inside another vocab word
+             if (event.target.closest('.vocab-word')) return;
+             document.querySelectorAll('.vocab-word.active').forEach(word => {
+                 word.classList.remove('active');
+             });
+        }
+
+
+        function toggleSingleTranslation(button) { /* ... (same as before) ... */
+            const translationSpan = button.nextElementSibling;
+            if (translationSpan && translationSpan.classList.contains('sentence-translation')) {
+                const isVisible = translationSpan.style.display === 'block';
+                translationSpan.style.display = isVisible ? 'none' : 'block';
+                button.textContent = isVisible ? '译' : '隐';
+            }
+        }
+
+        function showAllTranslations(show) { /* ... (same as before) ... */
+            const translations = passageContainer.querySelectorAll('.sentence-translation');
+            const buttons = passageContainer.querySelectorAll('.toggle-translation-btn');
+            translations.forEach(span => {
+                span.style.display = show ? 'block' : 'none';
+            });
+            buttons.forEach(btn => {
+                btn.textContent = show ? '隐' : '译';
+            });
+        }
+
+         // Clears feedback for ALL questions (visuals and state)
+         function clearAllAnswerFeedback() {
+            isCheckingAnswers = false; // Reset checking flag
+            scoreDisplay.textContent = ''; // Clear score display
+
+            // Clear placeholder feedback
+            passageContainer.querySelectorAll('.blank-placeholder').forEach(p => {
+                p.classList.remove('correct', 'incorrect', 'active'); // Also remove active highlight
+                 const blankId = p.dataset.blankId;
+                 const blankData = clozeData.find(b => b.id === parseInt(blankId));
+                 // Reset text based on whether an answer is selected or not
+                 if(blankData && blankData.selectedIndex === null) {
+                     p.textContent = `___(${blankId})___`;
+                     p.classList.remove('answered');
+                 } else if (blankData && blankData.selectedIndex !== null) {
+                      const selectedText = blankData.options[blankData.selectedIndex].replace(/^\[[A-Z]\]\s*/, '');
+                      const cleanSelectedText = selectedText.replace(/{{VOCAB:(.*?):.*?}}/g, '$1');
+                      p.textContent = cleanSelectedText;
+                      p.classList.add('answered'); // Ensure answered class is present
+                 } else { // Fallback if blankData not found?
+                      p.textContent = `___(${blankId})___`;
+                      p.classList.remove('answered');
+                 }
+            });
+            currentActiveBlankId = null; // Reset active blank ID
+
+            // Clear options panel feedback
+            optionsPanelContent.querySelectorAll('.quiz-option label').forEach(label => {
+                label.classList.remove('correct', 'incorrect', 'missed-correct');
+            });
+            optionsPanelContent.querySelectorAll('.quiz-option input[type="radio"]').forEach(radio => {
+                 radio.disabled = false; // Re-enable radios
+            });
+        }
+
+
+        function switchToStudyMode() {
+            clearAllAnswerFeedback(); // Clear feedback when switching mode
+            bodyElement.classList.remove('quiz-mode');
+            bodyElement.classList.add('study-mode');
+            studyModeBtn.classList.add('active');
+            quizModeBtn.classList.remove('active');
+            studyModeControls.style.display = 'flex';
+            checkAnswersBtn.style.display = 'none';
+            scoreDisplay.style.display = 'none';
+
+            // Update placeholders based on current selections (will show selected text + feedback)
+            updateAllPlaceholdersFromState();
+            // Apply feedback to options panel based on current selections
+            buildAllOptionsPanel(); // Rebuild to apply study mode feedback correctly AND setup tooltips
+
+            // setupVocabTooltips(); // Called inside buildAllOptionsPanel now
+        }
+
+        function switchToQuizMode() {
+            clearAllAnswerFeedback(); // Clear feedback when switching mode
+            bodyElement.classList.remove('study-mode');
+            bodyElement.classList.add('quiz-mode');
+            quizModeBtn.classList.add('active');
+            studyModeBtn.classList.remove('active');
+            studyModeControls.style.display = 'none';
+            checkAnswersBtn.style.display = 'inline-block';
+            checkAnswersBtn.disabled = false; // Ensure check button is enabled
+            scoreDisplay.style.display = 'block'; // Show score area
+
+            hideAllTooltips({ target: null });
+            showAllTranslations(false);
+
+            // Update placeholders based on current selections (will show selected text without feedback initially)
+            updateAllPlaceholdersFromState();
+            // Rebuild options panel to ensure correct state for quiz mode
+            buildAllOptionsPanel();
+        }
+
+        // Applies IMMEDIATE visual feedback in STUDY mode to a specific group
+        function applyStudyModeFeedback(blankId, selectedIndex) {
+            const blankData = clozeData.find(b => b.id === blankId);
+            if (!blankData) return;
+
+            const optionsGroup = optionsPanelContent.querySelector(`#option-group-${blankId}`);
+            if (!optionsGroup) return;
+
+            const labels = optionsGroup.querySelectorAll('.quiz-option label');
+            const radios = optionsGroup.querySelectorAll('.quiz-option input[type="radio"]');
+
+            // Clear previous feedback first for this group
+            labels.forEach(l => l.classList.remove('correct', 'incorrect', 'missed-correct'));
+            radios.forEach(r => r.disabled = false); // Ensure radios are enabled in study mode
+
+            const isCorrectSelection = selectedIndex === blankData.correctIndex;
+            const selectedLabel = optionsGroup.querySelector(`label[for="q${blankId}_opt${selectedIndex}"]`);
+            const correctLabel = optionsGroup.querySelector(`label[for="q${blankId}_opt${blankData.correctIndex}"]`);
+
+            if (isCorrectSelection) {
+                selectedLabel?.classList.add('correct');
+            } else {
+                selectedLabel?.classList.add('incorrect');
+                correctLabel?.classList.add('missed-correct'); // Highlight the correct one too
+            }
+        }
+
+
+        // Applies visual feedback AFTER checking answers in QUIZ mode to a specific group
+        function applyQuizModeFeedback(blankId) {
+            const blankData = clozeData.find(b => b.id === blankId);
+            if (!blankData) return;
+
+            const optionsGroup = optionsPanelContent.querySelector(`#option-group-${blankId}`);
+            if (!optionsGroup) return; // Only apply if options are currently displayed
+
+            const radios = optionsGroup.querySelectorAll(`input[name="question_${blankId}"]`);
+            radios.forEach(radio => {
+                radio.disabled = true; // Disable radios after checking in quiz mode
+                const label = optionsGroup.querySelector(`label[for="${radio.id}"]`);
+                label?.classList.remove('correct', 'incorrect', 'missed-correct'); // Clear previous label state
+
+                const optionIndex = parseInt(radio.value);
+                const isCorrectAnswer = optionIndex === blankData.correctIndex;
+                const isSelected = blankData.selectedIndex === optionIndex;
+
+                if (isSelected) {
+                    if (isCorrectAnswer) {
+                        label?.classList.add('correct');
+                    } else {
+                        label?.classList.add('incorrect');
+                    }
+                }
+                // If this is the correct answer and it wasn't selected (or nothing was selected)
+                if (isCorrectAnswer && (!isSelected || blankData.selectedIndex === null)) {
+                     label?.classList.add('missed-correct');
+                }
+            });
+        }
+
+        function checkAnswers() {
+            if (!bodyElement.classList.contains('quiz-mode')) return;
+            isCheckingAnswers = true; // Set flag
+            checkAnswersBtn.disabled = true; // Disable button after checking
+
+            let correctCount = 0;
+            clozeData.forEach(blank => {
+                if (blank.selectedIndex === blank.correctIndex) {
+                    correctCount++;
+                }
+                // Apply feedback to all placeholders
+                 updatePlaceholderText(blank.id); // This will now also apply correct/incorrect classes
+                // Apply feedback to all options groups
+                applyQuizModeFeedback(blank.id);
+            });
+
+            scoreDisplay.textContent = `得分: ${correctCount} / ${clozeData.length}`;
+        }
+
+        // --- Initialization ---
+        document.addEventListener('DOMContentLoaded', () => {
+            buildPassageHTML();
+            buildAllOptionsPanel(); // Build all options initially
+            switchToStudyMode(); // Default mode
+        });
+
+    </script>
+
+</body>
+</html>

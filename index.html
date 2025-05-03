@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>交互式阅读与答题模板</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
+    <style>
+        /* Custom styles (Layout, Controls, Passage, Options, Resizer, Grammar Annotations etc.) */
+        html, body {
+            height: 100%;
+            margin: 0;
+            overflow-x: hidden;
+            background-color: #f3f4f6; /* Light gray background */
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            line-height: 1.8;
+            display: flex;
+            flex-direction: column;
+        }
+        .page-container {
+            display: flex;
+            flex-direction: column;
+            flex-grow: 1;
+            overflow: hidden;
+            width: 100%;
+            margin: 0 auto;
+        }
+        .controls {
+            padding: 1rem 1.5rem;
+            background-color: white;
+            border-bottom: 1px solid #e5e7eb;
+            flex-shrink: 0;
+            box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
+            z-index: 10;
+            margin: 1rem 1rem 0 1rem;
+            border-radius: 8px;
+        }
+        .main-content {
+            display: flex;
+            flex-direction: column;
+            flex-grow: 1;
+            overflow: hidden;
+            margin: 0 1rem 1rem 1rem;
+            position: relative;
+        }
+        #passage-container {
+            padding: 1rem 1.5rem;
+            background-color: white;
+            overflow-y: auto;
+            flex-shrink: 1;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
+            margin-bottom: 1rem;
+            min-width: 200px;
+            position: relative;
+        }
+        #options-panel-container {
+            background-color: #f9fafb;
+            border-top: 1px solid #e5e7eb;
+            overflow-y: auto;
+            padding: 1rem 1.5rem;
+            flex-shrink: 1;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
+            min-width: 200px;
+            position: relative;
+        }
+        #resizer {
+            width: 8px;
+            height: 100%;
+            background-color: #e5e7eb;
+            cursor: col-resize;
+            position: absolute;
+            top: 0;
+            z-index: 5;
+            display: none;
+            border-left: 1px solid #d1d5db;
+            border-right: 1px solid #d1d5db;
+            box-sizing: border-box;
+        }
+        #resizer:hover { background-color: #d1d5db; }
+        body.resizing { cursor: col-resize; user-select: none; }
+        body.resizing #passage-container, body.resizing #options-panel-container { pointer-events: none; }
+
+        @media (min-width: 1024px) {
+             body { height: 100vh; overflow: hidden; }
+            .page-container { height: 100vh; padding: 1rem; box-sizing: border-box; }
+             .controls { margin: 0 0 1rem 0; }
+            .main-content { flex-direction: row; margin: 0; height: calc(100% - 5rem); }
+            #passage-container { width: 55%; flex-shrink: 0; margin-right: 0; margin-bottom: 0; height: 100%; border-radius: 8px 0 0 8px; }
+            #options-panel-container { flex-grow: 1; border-top: none; border-left: none; height: 100%; border-radius: 0 8px 8px 0; }
+            #resizer { display: block; left: 55%; }
+        }
+        .control-button { padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 0.9rem; transition: background-color 0.2s, color 0.2s; margin: 0 4px; }
+        .control-button.active { background-color: #3b82f6; color: white; }
+        .control-button:not(.active) { background-color: #e5e7eb; color: #374151; }
+        .control-button:not(.active):hover { background-color: #d1d5db; }
+        #passage-content { line-height: 2.5; }
+        #passage-content p { margin-bottom: 1rem; }
+        .sentence-container { display: inline; }
+        .sentence-wrapper { display: inline; }
+        .sentence { display: inline; }
+        .blank-placeholder { color: #3b82f6; font-weight: 600; cursor: pointer; padding: 2px 4px; border-radius: 4px; margin: 0 2px; transition: background-color 0.2s, color 0.2s, text-decoration 0.2s, border-bottom 0.2s; border-bottom: 1px dotted #3b82f6; display: inline-block; min-width: 50px; text-align: center; vertical-align: baseline; }
+        .blank-placeholder.active { background-color: #dbeafe; border-bottom-color: transparent; }
+        .blank-placeholder.answered { border-bottom-color: transparent; font-style: normal; font-weight: normal; background-color: transparent; color: #1f2937; }
+        .quiz-mode .blank-placeholder.answered { color: #3b82f6; }
+        .blank-placeholder.correct { color: #059669 !important; background-color: #d1fae5 !important; font-weight: bold !important; border-bottom-color: transparent !important; }
+        .blank-placeholder.incorrect { color: #dc2626 !important; background-color: #fee2e2 !important; font-weight: bold !important; border-bottom-color: transparent !important; }
+        .blank-placeholder.correct.active, .blank-placeholder.incorrect.active { border-bottom-color: transparent !important; }
+        .vocab-word { cursor: pointer; text-decoration: underline; text-decoration-style: dotted; color: #2563eb; position: relative; font-weight: 500; }
+        .tooltip { visibility: hidden; width: max-content; max-width: 200px; background-color: #333; color: #fff; text-align: center; border-radius: 6px; padding: 5px 10px; position: absolute; z-index: 20; bottom: 125%; left: 50%; transform: translateX(-50%); opacity: 0; transition: opacity 0.3s; font-size: 0.875rem; line-height: 1.4; pointer-events: none; }
+        .vocab-word:hover .tooltip, .vocab-word.active .tooltip { visibility: visible; opacity: 1; }
+        .quiz-mode .vocab-word { cursor: default; text-decoration: none; color: inherit; font-weight: inherit; }
+        .quiz-mode .vocab-word .tooltip { display: none; }
+        .study-mode .toggle-translation-btn { display: inline-block; background: none; border: none; color: #9ca3af; cursor: pointer; font-size: 0.8em; margin-left: 5px; vertical-align: middle; padding: 2px 4px; border-radius: 3px; transition: background-color 0.2s; }
+        .study-mode .toggle-translation-btn:hover { background-color: #e5e7eb; }
+        .sentence-translation { color: #6b7280; font-size: 0.95em; background-color: #f3f4f6; padding: 5px 8px; border-radius: 4px; display: none; margin-top: 0.5rem; margin-bottom: 0.25rem; }
+        .quiz-mode .toggle-translation-btn, .quiz-mode .sentence-translation { display: none !important; }
+        .study-mode .study-controls { display: flex; }
+        .quiz-mode .study-controls { display: none; }
+        .study-mode .check-answers-btn, .study-mode #score-display { display: none; }
+        .study-mode .quiz-options { display: grid; }
+        .study-mode .quiz-option input[type="radio"]:disabled + label { cursor: pointer; }
+        .study-mode .quiz-option input[type="radio"]:disabled {}
+        .quiz-mode .check-answers-btn { display: inline-block; }
+        .quiz-mode #score-display { display: block; font-weight: 600; }
+        .quiz-mode .quiz-options { display: grid; }
+        #options-panel-container h2 { font-size: 1.25rem; font-weight: 600; margin-bottom: 1rem; color: #1f2937; }
+        #options-panel-content {}
+        .options-prompt { color: #6b7280; font-style: italic; text-align: center; padding: 2rem 0; }
+        .option-group { display: flex; align-items: center; margin-bottom: 0.75rem; padding-bottom: 0.75rem; border-bottom: 1px solid #e5e7eb; }
+        .option-group:last-child { border-bottom: none; }
+        .option-group .question-number { font-weight: 600; color: #4b5563; margin-right: 1rem; flex-shrink: 0; width: 2em; text-align: right; }
+        .quiz-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 0.5rem; width: 100%; }
+        @media (min-width: 640px) { .quiz-options { grid-template-columns: repeat(4, 1fr); } }
+        .quiz-option input[type="radio"] { opacity: 0; position: absolute; width: 0; height: 0; }
+        .quiz-option label { display: flex; align-items: baseline; padding: 0.5rem 0.75rem; border: 1px solid #d1d5db; border-radius: 6px; background-color: #ffffff; color: #374151; cursor: pointer; transition: background-color 0.2s, border-color 0.2s, box-shadow 0.2s; font-size: 0.9em; text-align: left; box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); position: relative; white-space: normal; word-break: break-word; }
+        .quiz-option .option-prefix { flex-shrink: 0; width: 2.5em; margin-right: 0.5em; font-weight: 600; color: #6b7280; text-align: right; }
+        .quiz-option .option-text { flex-grow: 1; pointer-events: auto; }
+        .quiz-option label .vocab-word { pointer-events: auto; }
+        .quiz-option label:hover { background-color: #f9fafb; border-color: #9ca3af; }
+        .quiz-option input[type="radio"]:checked + label { background-color: #dbeafe; border-color: #60a5fa; color: #1e40af; font-weight: 500; box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1); }
+        .quiz-option input[type="radio"]:checked + label .option-prefix { color: #1e40af; }
+        .quiz-option input[type="radio"]:focus + label { box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.5); outline: none; }
+        .quiz-option label.correct { background-color: #d1fae5 !important; border-color: #34d399 !important; color: #065f46 !important; font-weight: bold; }
+        .quiz-option label.correct .option-prefix { color: #065f46 !important; }
+        .quiz-option label.correct::after { content: ' ✔'; color: #059669; font-weight: bold; margin-left: auto; padding-left: 0.5em; }
+        .quiz-option label.incorrect { background-color: #fee2e2 !important; border-color: #f87171 !important; color: #991b1b !important; }
+        .quiz-option label.incorrect .option-prefix { color: #991b1b !important; }
+        .quiz-option label.incorrect::after { content: ' ✘'; color: #dc2626; font-weight: bold; margin-left: auto; padding-left: 0.5em; }
+        .quiz-option label.missed-correct { border-color: #34d399; }
+        .quiz-mode .quiz-option input[type="radio"]:disabled + label { cursor: default; }
+        .sentence-analysis { background-color: #eef2ff; border-left: 3px solid #6366f1; padding: 0.75rem 1rem; font-size: 0.9em; color: #4338ca; border-radius: 4px; line-height: 1.6; display: block; margin-top: 0.5rem; margin-bottom: 0.5rem; display: none; }
+        .sentence-analysis h4 { font-weight: 600; color: #4f46e5; margin-top: 0.5rem; margin-bottom: 0.25rem; }
+        .sentence-analysis p { margin-bottom: 0.25rem; }
+        .sentence-analysis code { background-color: rgba(199, 210, 254, 0.5); padding: 1px 4px; border-radius: 3px; font-family: monospace; }
+        .sentence-annotated { padding: 0.5rem; background-color: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 4px; line-height: 2.5; color: #374151; display: block; margin-top: 0.5rem; margin-bottom: 2.5em; display: none; }
+        .sentence-annotated .correct-answer-text { font-weight: 600; color: #059669; border-bottom: 1px solid #059669; padding-bottom: 1px; }
+        .grammar-phrase { position: relative; padding-bottom: 2px; margin-bottom: -2px; border-bottom-width: 1.5px; border-bottom-style: solid; }
+        .grammar-phrase::after { content: attr(data-role); position: absolute; bottom: -2.5em; left: 50%; transform: translateX(-50%); font-size: 0.7em; font-weight: 600; background-color: transparent; padding: 0; border-radius: 0; color: #4b5563; white-space: nowrap; z-index: 1; opacity: 0.9; }
+        .grammar-subject { border-bottom-color: #3b82f6; } .grammar-subject::after { color: #3b82f6; }
+        .grammar-verb { border-bottom-color: #ef4444; } .grammar-verb::after { color: #ef4444; }
+        .grammar-object { border-bottom-color: #10b981; } .grammar-object::after { color: #10b981; }
+        .grammar-predicate { border-bottom-color: #f97316; } .grammar-predicate::after { color: #f97316; }
+        .grammar-adverbial { border-bottom-color: #8b5cf6; } .grammar-adverbial::after { color: #8b5cf6; }
+        .grammar-adjectival { border-bottom-color: #ec4899; } .grammar-adjectival::after { color: #ec4899; }
+        .grammar-clause { border-bottom-color: #6b7280; border-bottom-style: dashed; } .grammar-clause::after { color: #6b7280; }
+        .grammar-conjunction { border-bottom-color: #a16207; border-bottom-style: dotted; } .grammar-conjunction::after { color: #a16207; }
+        .grammar-prepositional-phrase { border-bottom-color: #0891b2; } .grammar-prepositional-phrase::after { color: #0891b2; }
+        .grammar-phrase .vocab-word { border-bottom: none; padding-bottom: 0; margin-bottom: 0; }
+        .grammar-phrase .vocab-word::after { display: none; }
+        .study-mode.analysis-visible .sentence-analysis, .study-mode.analysis-visible .sentence-annotated { display: block; }
+        .quiz-mode .sentence-analysis, .quiz-mode .sentence-annotated, body:not(.analysis-visible) .sentence-analysis, body:not(.analysis-visible) .sentence-annotated { display: none !important; }
+        .sentence-translation:not(.visible) { display: none; }
+    </style>
+</head>
+<body class="study-mode">
+    <div class="page-container">
+        <div class="controls flex flex-wrap gap-2 items-center">
+            <div>
+                <button id="study-mode-btn" class="control-button active" onclick="switchToStudyMode()">学习模式</button>
+                <button id="quiz-mode-btn" class="control-button" onclick="switchToQuizMode()">答题模式</button>
+            </div>
+            <div class="study-controls flex flex-wrap gap-2 items-center">
+                 <div class="border-l pl-2 ml-2">
+                    <button class="control-button" onclick="showAllTranslations(true)">全部显示翻译</button>
+                    <button class="control-button" onclick="showAllTranslations(false)">全部隐藏翻译</button>
+                 </div>
+                 <div class="border-l pl-2 ml-2">
+                    <button class="control-button" onclick="showAllAnalysis(true)">显示分析</button>
+                    <button class="control-button" onclick="showAllAnalysis(false)">隐藏分析</button>
+                 </div>
+            </div>
+            <button id="check-answers-btn" class="control-button check-answers-btn" onclick="checkAnswers()">检查答案</button>
+            <div id="score-display" class="ml-auto font-semibold"></div>
+        </div>
+
+        <div class="main-content">
+            <div id="passage-container">
+                <h1 id="passage-title" class="text-2xl md:text-3xl font-bold mb-4 text-gray-800"></h1>
+                <div id="passage-content"></div>
+            </div>
+            <div id="resizer"></div>
+            <div id="options-panel-container">
+                 <h2>全部选项</h2>
+                 <div id="options-panel-content">
+                    <p class="options-prompt">请在左侧选择空格以查看选项。</p>
+                 </div>
+            </div>
+        </div>
+    </div>
+    <script src="2011.js"></script>
+    <script>
+        // --- DOM Elements ---
+        let passageContainer, passageContent, optionsPanelContent, bodyElement, studyModeBtn, quizModeBtn, studyControlsDiv, checkAnswersBtn, scoreDisplay, resizer, mainContent, passageTitleElement;
+
+        // --- State ---
+        let isCheckingAnswers = false;
+        let currentActiveBlankId = null;
+
+        // --- Functions (Defined globally) ---
+
+        // Parses text containing {{VOCAB:...}} markers into spans with tooltips
+        function parseTextWithVocab(text) {
+            // Check if data is loaded before proceeding
+            if (typeof passageRaw === 'undefined' || typeof clozeData === 'undefined' || typeof analysisData === 'undefined') {
+                console.error("Data not loaded yet. Ensure data.js is included before this script.");
+                return "<p class='text-red-500'>Error: Data not loaded.</p>"; // Prevent errors if data is missing
+            }
+            if (typeof text !== 'string') return '';
+            return text.replace(/{{VOCAB:(.*?):(.*?)}}(?![^<]*>)/g, function(match, word, translation) {
+                const encodedTranslation = encodeURIComponent(translation);
+                return `<span class="vocab-word" data-translation="${encodedTranslation}" style="pointer-events: auto;">${word}<span class="tooltip">${translation}</span></span>`;
+            });
+        }
+
+         // Generates the blank placeholder span
+         function generateBlankPlaceholder(id) {
+             const initialText = `___(${id})___`;
+             return `<span class="blank-placeholder" data-blank-id="${id}" onclick="activateBlank(${id})">${initialText}</span>`;
+         }
+
+         // Gets the correct answer text (raw, without vocab markers)
+         function getCorrectAnswerRawText(blankId) {
+             const blankData = clozeData.find(b => b.id === parseInt(blankId));
+             if (blankData && blankData.correctIndex !== null && blankData.options[blankData.correctIndex]) {
+                 let correctText = blankData.options[blankData.correctIndex];
+                 correctText = correctText.replace(/^\[[A-Z]\]\s*/, '');
+                 correctText = correctText.replace(/{{VOCAB:(.*?):.*?}}/g, '$1');
+                 return correctText;
+             }
+             console.warn(`Correct raw answer text not found for blank ID: ${blankId}`);
+             return `___(${blankId})___`;
+         }
+
+         // Gets the correct answer text WITH vocab markers parsed
+          function getCorrectAnswerParsedText(blankId) {
+              const blankData = clozeData.find(b => b.id === parseInt(blankId));
+              if (blankData && blankData.correctIndex !== null && blankData.options[blankData.correctIndex]) {
+                  let correctText = blankData.options[blankData.correctIndex];
+                  correctText = correctText.replace(/^\[[A-Z]\]\s*/, '');
+                  return parseTextWithVocab(correctText);
+              }
+              console.warn(`Correct parsed answer text not found for blank ID: ${blankId}`);
+              return `___(${blankId})___`;
+          }
+
+         // Cleans analysis text for display in the analysis block
+         function cleanAnalysisText(text) {
+             if (typeof text !== 'string') return '';
+             let cleaned = text.replace(/{{VOCAB:(.*?):.*?}}/g, '<code>$1</code>');
+             cleaned = cleaned.replace(/{{BLANK:(\d+)}}/g, (match, id) => {
+                 const answerText = getCorrectAnswerRawText(id);
+                 return `<code>${answerText}</code>`;
+             });
+             return cleaned;
+         }
+
+        // Generates the HTML for the annotated sentence with grammar markup
+        function generateAnnotatedSentenceHTML(rawSentence, grammarMarkupData) {
+            if (!grammarMarkupData) {
+                let sentenceWithAnswers = rawSentence.replace(/{{BLANK:(\d+)}}/g, (match, id) => {
+                    const parsedCorrectText = getCorrectAnswerParsedText(id);
+                    return `<span class="correct-answer-text">${parsedCorrectText}</span>`;
+                });
+                return parseTextWithVocab(sentenceWithAnswers);
+            }
+            let processedGrammarMarkup = grammarMarkupData.replace(/{{BLANK:(\d+)}}/g, (match, id) => {
+                const parsedCorrectText = getCorrectAnswerParsedText(id);
+                return `<span class="correct-answer-text">${parsedCorrectText}</span>`;
+            });
+            processedGrammarMarkup = parseTextWithVocab(processedGrammarMarkup);
+            return processedGrammarMarkup;
+        }
+
+        // Generates the detailed analysis block HTML
+        function generateAnalysisBlockHTML(analysisText) {
+            if (!analysisText) return '';
+            const cleanedText = cleanAnalysisText(analysisText);
+            return `<div class="sentence-analysis">${cleanedText}</div>`;
+        }
+
+        // Builds the HTML for the passage
+        function buildPassageHTML() {
+             // Check if data is loaded
+            if (typeof passageRaw === 'undefined' || typeof analysisData === 'undefined') {
+                console.error("Passage or analysis data not found. Make sure data.js is loaded correctly.");
+                passageContent.innerHTML = "<p class='text-red-500 p-4'>错误：无法加载文章数据。</p>";
+                return;
+            }
+            if (!passageContent) {
+                console.error("Passage content container not found during buildPassageHTML");
+                return;
+            }
+
+            let processedHTML = '';
+            const paragraphs = passageRaw.trim().split('</p>');
+
+            paragraphs.forEach(p => {
+                if (!p.trim()) return;
+                let paragraphContent = p.replace('<p>', '').trim();
+                if (!paragraphContent) return; // Skip empty paragraphs after trimming
+
+                let paragraphHTML = '';
+                try {
+                    paragraphHTML = paragraphContent.replace(/{{SENTENCE:(.*?)}}\|\|\|{(.*?)}/gs, (match, sentence, translation) => {
+                        const rawSentence = sentence;
+                        // Ensure analysisData exists before trying to access it
+                        const sentenceData = analysisData && analysisData[rawSentence] ? analysisData[rawSentence] : {};
+                        const analysisText = sentenceData.analysisText || '';
+                        const grammarMarkup = sentenceData.grammarMarkup || null;
+
+                        let originalSentenceHTML = parseTextWithVocab(rawSentence);
+                        originalSentenceHTML = originalSentenceHTML.replace(/{{BLANK:(\d+)}}/g, (blankMatch, id) => generateBlankPlaceholder(id));
+
+                        const annotatedSentenceHTML = generateAnnotatedSentenceHTML(rawSentence, grammarMarkup);
+                        const analysisBlockHTML = generateAnalysisBlockHTML(analysisText);
+
+                        return `<span class="sentence-container">` +
+                                   `<span class="sentence-wrapper"><span class="sentence">${originalSentenceHTML}</span>` +
+                                   `<button class="toggle-translation-btn" onclick="toggleSingleTranslation(this)">译</button></span>` +
+                                   `<span class="sentence-translation">${translation}</span>` +
+                                   `<div class="sentence-annotated">${annotatedSentenceHTML}</div>` +
+                                   analysisBlockHTML +
+                               `</span>`;
+                    });
+                     // Only add paragraph tags if paragraphHTML is not empty
+                    if (paragraphHTML.trim()) {
+                        processedHTML += `<p>${paragraphHTML}</p>`;
+                    }
+                } catch (error) {
+                     console.error("Error processing paragraph content:", error);
+                     processedHTML += `<p style="color: red;">Error displaying content.</p>`;
+                }
+            });
+
+            passageContent.innerHTML = processedHTML;
+            setupVocabTooltips();
+            updateAllPlaceholdersFromState();
+
+            // Extract and set passage title (assuming title is first H1 in passageRaw, or provide separately)
+            // Example: Extract from first H1 if available
+             const titleMatch = passageRaw.match(/<h1.*?>(.*?)<\/h1>/i);
+             if (passageTitleElement) {
+                 passageTitleElement.textContent = titleMatch ? titleMatch[1] : "阅读文章"; // Default title
+             }
+             // Or, if title is provided separately in data.js:
+             // if (passageTitleElement && typeof passageTitle !== 'undefined') {
+             //     passageTitleElement.textContent = passageTitle;
+             // }
+        }
+
+        // Builds the entire options panel
+        function buildAllOptionsPanel() {
+             // Check if data is loaded
+            if (typeof clozeData === 'undefined') {
+                console.error("Cloze data not found. Make sure data.js is loaded correctly.");
+                optionsPanelContent.innerHTML = "<p class='text-red-500 p-4'>错误：无法加载选项数据。</p>";
+                return;
+            }
+            if (!optionsPanelContent || !bodyElement) return;
+
+            let allOptionsHTML = '';
+            if (clozeData && clozeData.length > 0) {
+                clozeData.forEach(blankData => {
+                    allOptionsHTML += `<div class="option-group" id="option-group-${blankData.id}">`;
+                    allOptionsHTML += `<span class="question-number">${blankData.id}.</span>`;
+                    allOptionsHTML += `<div class="quiz-options">`;
+                    blankData.options.forEach((option, index) => {
+                        const inputId = `q${blankData.id}_opt${index}`;
+                        const isSelected = blankData.selectedIndex === index;
+                        const match = option.match(/^(\[[A-Z]\])\s*(.*)$/);
+                        let prefix = `[${String.fromCharCode(65 + index)}]`;
+                        let textContent = option;
+                        if (match) {
+                            prefix = match[1];
+                            textContent = match[2];
+                        }
+                        const parsedTextContent = parseTextWithVocab(textContent);
+                        allOptionsHTML += `<div class="quiz-option">`;
+                        allOptionsHTML += `<input type="radio" id="${inputId}" name="question_${blankData.id}" value="${index}" ${isSelected ? 'checked' : ''} onchange="handleOptionSelect(${blankData.id}, ${index})">`;
+                        allOptionsHTML += `<label for="${inputId}">`;
+                        allOptionsHTML += `<span class="option-prefix">${prefix}</span>`;
+                        allOptionsHTML += `<span class="option-text">${parsedTextContent}</span>`;
+                        allOptionsHTML += `</label>`;
+                        allOptionsHTML += `</div>`;
+                    });
+                    allOptionsHTML += `</div>`;
+                    allOptionsHTML += `</div>`;
+                });
+                optionsPanelContent.innerHTML = allOptionsHTML;
+            } else {
+                 optionsPanelContent.innerHTML = '<p class="options-prompt">没有可用的选项。</p>';
+            }
+
+            setupVocabTooltips();
+            if (bodyElement.classList.contains('study-mode')) {
+                 clozeData.forEach(blank => {
+                     if(blank.selectedIndex !== null) applyStudyModeFeedback(blank.id, blank.selectedIndex);
+                 });
+            } else if (isCheckingAnswers) {
+                 clozeData.forEach(blank => applyQuizModeFeedback(blank.id));
+            }
+        }
+
+        // Highlights the clicked blank
+        function activateBlank(blankId) {
+            if (!passageContainer) return;
+
+            if (currentActiveBlankId !== null) {
+                const previousPlaceholders = passageContainer.querySelectorAll(`.blank-placeholder[data-blank-id="${currentActiveBlankId}"]`);
+                previousPlaceholders.forEach(p => p.classList.remove('active'));
+            }
+            currentActiveBlankId = blankId;
+            const currentPlaceholder = passageContainer.querySelector(`.sentence .blank-placeholder[data-blank-id="${blankId}"]`);
+            currentPlaceholder?.classList.add('active');
+
+            const optionGroup = document.getElementById(`option-group-${blankId}`);
+            if (optionGroup) {
+                optionGroup.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                 optionGroup.style.backgroundColor = '#eff6ff';
+                 setTimeout(() => { optionGroup.style.backgroundColor = ''; }, 1500);
+            } else {
+                // If specific group not found (maybe in prompt state), show general prompt
+                 if (!optionsPanelContent.querySelector('.option-group')) {
+                     optionsPanelContent.innerHTML = '<p class="options-prompt">请在左侧选择空格以查看选项。</p>';
+                 }
+            }
+        }
+
+        // Handles selecting an option
+        function handleOptionSelect(blankId, selectedIndex) {
+            // Check if data is loaded
+            if (typeof clozeData === 'undefined') return;
+            const blankData = clozeData.find(b => b.id === blankId);
+            if (!blankData || !bodyElement || !scoreDisplay) return;
+
+            blankData.selectedIndex = selectedIndex;
+
+            updatePlaceholderText(blankId);
+            if (bodyElement.classList.contains('study-mode')) {
+                applyStudyModeFeedback(blankId, selectedIndex);
+            } else if (isCheckingAnswers) {
+                applyQuizModeFeedback(blankId);
+                const correctCount = clozeData.filter(b => b.selectedIndex === b.correctIndex).length;
+                scoreDisplay.textContent = `得分: ${correctCount} / ${clozeData.length}`;
+            }
+        }
+
+        // Updates the placeholder in the original sentence
+        function updatePlaceholderText(blankId) {
+             // Check if data is loaded
+            if (typeof clozeData === 'undefined') return;
+             if (!passageContainer) return;
+             const placeholder = passageContainer.querySelector(`.sentence .blank-placeholder[data-blank-id="${blankId}"]`);
+             const blankData = clozeData.find(b => b.id === blankId);
+             if (placeholder && blankData) {
+                 placeholder.classList.remove('correct', 'incorrect', 'answered');
+                 if (blankData.selectedIndex !== null && blankData.selectedIndex >= 0 && blankData.options.length > blankData.selectedIndex) {
+                     const selectedText = blankData.options[blankData.selectedIndex].replace(/^\[[A-Z]\]\s*/, '');
+                     const cleanSelectedText = selectedText.replace(/{{VOCAB:(.*?):.*?}}/g, '$1');
+                     placeholder.textContent = cleanSelectedText;
+                     placeholder.classList.add('answered');
+                     if ((isCheckingAnswers && bodyElement.classList.contains('quiz-mode')) || bodyElement.classList.contains('study-mode')) {
+                          if (blankData.selectedIndex === blankData.correctIndex) {
+                             placeholder.classList.add('correct');
+                         } else {
+                             placeholder.classList.add('incorrect');
+                         }
+                     }
+                 } else {
+                     placeholder.textContent = `___(${blankId})___`;
+                 }
+             } else if(placeholder) {
+                 placeholder.textContent = `___(${blankId})___`;
+                 placeholder.classList.remove('correct', 'incorrect', 'answered');
+             }
+        }
+
+        // Updates all original placeholders
+        function updateAllPlaceholdersFromState() {
+            // Check if data is loaded
+            if (typeof clozeData === 'undefined') return;
+            clozeData.forEach(blank => {
+                updatePlaceholderText(blank.id);
+            });
+        }
+
+        // Sets up vocab tooltips for all vocab words (original, options, annotated)
+        function setupVocabTooltips() {
+            const allVocab = document.querySelectorAll('.vocab-word');
+            allVocab.forEach(word => {
+                let tooltip = word.querySelector('.tooltip');
+                const translation = word.dataset.translation ? decodeURIComponent(word.dataset.translation) : 'No translation';
+                if (!tooltip) {
+                    tooltip = document.createElement('span');
+                    tooltip.classList.add('tooltip');
+                    word.appendChild(tooltip);
+                }
+                tooltip.textContent = translation;
+                word.removeEventListener('click', handleVocabClick);
+                word.addEventListener('click', handleVocabClick);
+            });
+             document.removeEventListener('click', hideAllTooltips, true);
+             document.addEventListener('click', hideAllTooltips, true);
+        }
+
+        // Handles vocab clicks - prevent propagation to document listener
+        function handleVocabClick(event) {
+             if (!bodyElement || !bodyElement.classList.contains('study-mode')) return;
+             event.stopPropagation();
+             const currentWord = event.currentTarget;
+             const isActive = currentWord.classList.contains('active');
+             document.querySelectorAll('.vocab-word.active').forEach(w => {
+                 if (w !== currentWord) { w.classList.remove('active'); }
+             });
+             currentWord.classList.toggle('active'); // Simplified toggle
+        }
+
+        // Hides tooltips if click is outside a vocab word
+        function hideAllTooltips(event) {
+             if (event.target.closest('.vocab-word')) return;
+             document.querySelectorAll('.vocab-word.active').forEach(word => {
+                 word.classList.remove('active');
+             });
+        }
+
+        // Toggles single translation
+        function toggleSingleTranslation(button) {
+            const container = button.closest('.sentence-container'); // Find parent container
+            if (!container) return;
+            const translationSpan = container.querySelector('.sentence-translation');
+            if (translationSpan) {
+                const isVisible = translationSpan.style.display === 'block';
+                translationSpan.style.display = isVisible ? 'none' : 'block';
+                translationSpan.classList.toggle('visible', !isVisible);
+                button.textContent = isVisible ? '译' : '隐';
+            }
+        }
+
+
+        // Shows/hides all sentence translations ONLY
+        function showAllTranslations(show) {
+            if (!passageContainer || !bodyElement) return;
+            const translations = passageContainer.querySelectorAll('.sentence-translation');
+            const buttons = passageContainer.querySelectorAll('.toggle-translation-btn');
+            const displayValue = show ? 'block' : 'none';
+            const buttonText = show ? '隐' : '译';
+            translations.forEach(span => {
+                span.style.display = displayValue;
+                span.classList.toggle('visible', show);
+            });
+            buttons.forEach(btn => btn.textContent = buttonText);
+        }
+
+         // Shows/hides all sentence analysis/annotations ONLY
+         function showAllAnalysis(show) {
+             if (!bodyElement) return;
+             bodyElement.classList.toggle('analysis-visible', show);
+         }
+
+         // Clears feedback
+         function clearAllAnswerFeedback() {
+             // Check if data is loaded
+            if (typeof clozeData === 'undefined') return;
+            isCheckingAnswers = false;
+            if (scoreDisplay) scoreDisplay.textContent = '';
+            if (!passageContainer || !optionsPanelContent) return;
+
+            passageContainer.querySelectorAll('.sentence .blank-placeholder').forEach(p => {
+                p.classList.remove('correct', 'incorrect', 'active');
+                 const blankId = p.dataset.blankId;
+                 if (!blankId) return;
+                 const blankData = clozeData.find(b => b.id === parseInt(blankId));
+                 if (blankData?.selectedIndex === null) {
+                     p.textContent = `___(${blankId})___`;
+                     p.classList.remove('answered');
+                 } else {
+                     updatePlaceholderText(blankId); // Re-render text without feedback
+                 }
+            });
+
+            currentActiveBlankId = null;
+            optionsPanelContent.querySelectorAll('.quiz-option label').forEach(label => {
+                label.classList.remove('correct', 'incorrect', 'missed-correct');
+            });
+            optionsPanelContent.querySelectorAll('.quiz-option input[type="radio"]').forEach(radio => {
+                 radio.disabled = false;
+            });
+        }
+
+        // Switches to Study Mode
+        function switchToStudyMode() {
+            if (!bodyElement || !studyModeBtn || !quizModeBtn || !studyControlsDiv || !checkAnswersBtn || !scoreDisplay) return;
+            clearAllAnswerFeedback();
+            bodyElement.classList.remove('quiz-mode');
+            bodyElement.classList.add('study-mode');
+            studyModeBtn.classList.add('active');
+            quizModeBtn.classList.remove('active');
+            studyControlsDiv.style.display = 'flex';
+            checkAnswersBtn.style.display = 'none';
+            scoreDisplay.style.display = 'none';
+            buildAllOptionsPanel(); // Rebuild options to apply study feedback
+            updateAllPlaceholdersFromState();
+            setupVocabTooltips();
+        }
+
+        // Switches to Quiz Mode
+        function switchToQuizMode() {
+            if (!bodyElement || !studyModeBtn || !quizModeBtn || !studyControlsDiv || !checkAnswersBtn || !scoreDisplay) return;
+            clearAllAnswerFeedback();
+            bodyElement.classList.remove('study-mode', 'analysis-visible');
+            bodyElement.classList.add('quiz-mode');
+            quizModeBtn.classList.add('active');
+            studyModeBtn.classList.remove('active');
+            studyControlsDiv.style.display = 'none';
+            checkAnswersBtn.style.display = 'inline-block';
+            checkAnswersBtn.disabled = false;
+            scoreDisplay.style.display = 'block';
+            scoreDisplay.textContent = '';
+            buildAllOptionsPanel(); // Rebuild options to remove study feedback
+            hideAllTooltips({ target: null });
+            updateAllPlaceholdersFromState();
+            setupVocabTooltips();
+        }
+
+        // Applies study mode feedback
+        function applyStudyModeFeedback(blankId, selectedIndex) {
+             // Check if data is loaded
+            if (typeof clozeData === 'undefined') return;
+            const blankData = clozeData.find(b => b.id === blankId);
+            if (!blankData || !optionsPanelContent) return;
+
+            const optionsGroup = optionsPanelContent.querySelector(`#option-group-${blankId}`);
+            if (!optionsGroup) return;
+            const labels = optionsGroup.querySelectorAll('.quiz-option label');
+            labels.forEach(l => l.classList.remove('correct', 'incorrect', 'missed-correct'));
+
+            const isCorrectSelection = selectedIndex === blankData.correctIndex;
+            const selectedLabel = optionsGroup.querySelector(`label[for="q${blankId}_opt${selectedIndex}"]`);
+
+            if (selectedLabel) {
+                 selectedLabel.classList.add(isCorrectSelection ? 'correct' : 'incorrect');
+            }
+            updatePlaceholderText(blankId);
+        }
+
+        // Applies quiz mode feedback
+        function applyQuizModeFeedback(blankId) {
+             // Check if data is loaded
+            if (typeof clozeData === 'undefined') return;
+            const blankData = clozeData.find(b => b.id === blankId);
+            if (!blankData || !optionsPanelContent) return;
+
+            const optionsGroup = optionsPanelContent.querySelector(`#option-group-${blankId}`);
+            if (!optionsGroup) return;
+            const radios = optionsGroup.querySelectorAll(`input[name="question_${blankId}"]`);
+            radios.forEach(radio => {
+                radio.disabled = true;
+                const label = optionsGroup.querySelector(`label[for="${radio.id}"]`);
+                if (!label) return;
+
+                label.classList.remove('correct', 'incorrect', 'missed-correct');
+                const optionIndex = parseInt(radio.value);
+                const isCorrectAnswer = optionIndex === blankData.correctIndex;
+                const isSelected = blankData.selectedIndex === optionIndex;
+
+                if (isSelected) {
+                    label.classList.add(isCorrectAnswer ? 'correct' : 'incorrect');
+                }
+                if (isCorrectAnswer && !isSelected) {
+                     label.classList.add('missed-correct');
+                }
+            });
+             updatePlaceholderText(blankId);
+        }
+
+        // Checks answers in quiz mode
+        function checkAnswers() {
+             // Check if data is loaded
+            if (typeof clozeData === 'undefined') return;
+            if (!bodyElement || !bodyElement.classList.contains('quiz-mode') || !checkAnswersBtn || !scoreDisplay) return;
+
+            isCheckingAnswers = true;
+            checkAnswersBtn.disabled = true;
+
+            let correctCount = 0;
+            clozeData.forEach(blank => {
+                if (blank.selectedIndex === blank.correctIndex) {
+                    correctCount++;
+                }
+                applyQuizModeFeedback(blank.id);
+            });
+            scoreDisplay.textContent = `得分: ${correctCount} / ${clozeData.length}`;
+        }
+
+        // --- Resizing Logic ---
+        function initializeResizer() {
+            if (!resizer || !passageContainer || !optionsPanelContent || !mainContent) return;
+            let isResizing = false;
+            resizer.addEventListener('mousedown', (e) => {
+                if (window.getComputedStyle(mainContent).flexDirection !== 'row') return;
+                isResizing = true;
+                document.body.classList.add('resizing');
+                document.addEventListener('mousemove', handleMouseMove);
+                document.addEventListener('mouseup', handleMouseUp);
+            });
+            function handleMouseMove(e) {
+                if (!isResizing) return;
+                const mainRect = mainContent.getBoundingClientRect();
+                let newLeft = e.clientX - mainRect.left;
+                const minWidthPx = 200;
+                const resizerWidth = resizer.offsetWidth;
+                const maxLeft = mainRect.width - minWidthPx - resizerWidth;
+                if (newLeft < minWidthPx) newLeft = minWidthPx;
+                if (newLeft > maxLeft) newLeft = maxLeft;
+                passageContainer.style.width = `${newLeft}px`;
+                resizer.style.left = `${newLeft}px`;
+            }
+            function handleMouseUp() {
+                if (isResizing) {
+                    isResizing = false;
+                    document.body.classList.remove('resizing');
+                    document.removeEventListener('mousemove', handleMouseMove);
+                    document.removeEventListener('mouseup', handleMouseUp);
+                }
+            }
+        }
+
+        // --- Initialization ---
+        document.addEventListener('DOMContentLoaded', () => {
+            // Get elements
+            passageContainer = document.getElementById('passage-container'); // Container for title+content
+            passageContent = document.getElementById('passage-content'); // Specific div for passage text
+            passageTitleElement = document.getElementById('passage-title'); // H1 for title
+            optionsPanelContent = document.getElementById('options-panel-content');
+            bodyElement = document.body;
+            studyModeBtn = document.getElementById('study-mode-btn');
+            quizModeBtn = document.getElementById('quiz-mode-btn');
+            studyControlsDiv = document.querySelector('.study-controls');
+            checkAnswersBtn = document.getElementById('check-answers-btn');
+            scoreDisplay = document.getElementById('score-display');
+            resizer = document.getElementById('resizer');
+            mainContent = document.querySelector('.main-content');
+
+            // Basic check for essential elements
+            if (!passageContainer || !passageContent || !passageTitleElement || !optionsPanelContent || !bodyElement || !studyModeBtn || !quizModeBtn || !studyControlsDiv || !checkAnswersBtn || !scoreDisplay || !resizer || !mainContent) {
+                console.error("Initialization failed: Essential elements missing.");
+                 if (passageContainer) {
+                     passageContainer.innerHTML = "<h1 class='text-red-500'>错误</h1><p class='text-red-500 p-4'>加载页面组件时出错。</p>";
+                 }
+                return;
+            }
+
+             // Check if data is loaded (important!)
+            if (typeof passageRaw === 'undefined' || typeof clozeData === 'undefined' || typeof analysisData === 'undefined') {
+                console.error("Data variables (passageRaw, clozeData, analysisData) not found. Make sure data.js is included BEFORE this script and defines these variables.");
+                passageTitleElement.textContent = "错误";
+                passageContent.innerHTML = "<p class='text-red-500 p-4'>未能加载试题数据。请确保 <code>data.js</code> 文件已正确引入并包含所需数据。</p>";
+                optionsPanelContent.innerHTML = "<p class='text-red-500 p-4'>未能加载选项数据。</p>";
+                // Optionally disable controls if data is missing
+                studyModeBtn.disabled = true;
+                quizModeBtn.disabled = true;
+                return; // Stop further execution if data is missing
+            }
+
+
+            // Build initial HTML *after* confirming data exists
+            buildPassageHTML();
+            buildAllOptionsPanel();
+
+            // Set initial UI state
+            if (bodyElement.classList.contains('study-mode')) {
+                studyModeBtn.classList.add('active');
+                quizModeBtn.classList.remove('active');
+                studyControlsDiv.style.display = 'flex';
+                checkAnswersBtn.style.display = 'none';
+                scoreDisplay.style.display = 'none';
+                showAllAnalysis(false);
+                showAllTranslations(false);
+            } else {
+                quizModeBtn.classList.add('active');
+                studyModeBtn.classList.remove('active');
+                studyControlsDiv.style.display = 'none';
+                checkAnswersBtn.style.display = 'inline-block';
+                checkAnswersBtn.disabled = false;
+                scoreDisplay.style.display = 'block';
+                 bodyElement.classList.remove('analysis-visible');
+            }
+
+            // Initialize the resizer functionality
+            initializeResizer();
+        });
+
+    </script>
+
+</body>
+</html>
